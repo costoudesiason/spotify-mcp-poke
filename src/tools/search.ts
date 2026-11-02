@@ -5,6 +5,7 @@ import { ok, safe } from "./helpers.js";
 
 // Spotify's Feb 2026 dev-mode change capped /search at 10 results per request.
 const SPOTIFY_PAGE = 10;
+const MAX_REQUESTS = 24;
 
 type SearchType = "track" | "artist" | "album" | "playlist";
 
@@ -52,28 +53,39 @@ export function registerSearchTools(server: McpServer, spotify: SpotifyClient) {
       const start = offset ?? 0;
 
       const collected: Partial<Record<keyof SearchResponse, unknown[]>> = {};
+      const seen: Partial<Record<keyof SearchResponse, Set<string>>> = {};
       const totals: Partial<Record<keyof SearchResponse, number>> = {};
-      let remainingTypes = [...wanted];
+      // Each type pages independently. Dev-mode Spotify can return fewer items than `limit` and its
+      // `total`/`next` are unreliable, so advance by what actually came back and stop on an empty page.
+      const cursor = new Map<SearchType, number>(wanted.map((t) => [t, start]));
 
-      // Page in steps of 10 until each requested type has `target` results or runs out.
-      for (let page = start; remainingTypes.length > 0 && page < start + target; page += SPOTIFY_PAGE) {
+      for (let request = 0; cursor.size > 0 && request < MAX_REQUESTS; request++) {
+        // Types that share an offset can share a request.
+        const byOffset = new Map<number, SearchType[]>();
+        for (const [t, off] of cursor) byOffset.set(off, [...(byOffset.get(off) ?? []), t]);
+        const [off, types] = [...byOffset.entries()][0];
+
         const res = await spotify.get<SearchResponse>("/search", {
           q: query,
-          type: remainingTypes.join(","),
-          limit: Math.min(SPOTIFY_PAGE, start + target - page),
-          offset: page,
+          type: types.join(","),
+          limit: SPOTIFY_PAGE,
+          offset: off,
         });
-        const stillGoing: SearchType[] = [];
-        for (const t of remainingTypes) {
+        for (const t of types) {
           const key = KEY[t];
           const paging = res[key];
-          if (!paging) continue;
-          totals[key] = paging.total;
-          const items = paging.items.filter((x) => x !== null);
-          (collected[key] ??= []).push(...items);
-          if (paging.next && items.length > 0) stillGoing.push(t);
+          const raw = paging?.items ?? [];
+          if (paging) totals[key] = paging.total;
+          const bucket = (collected[key] ??= []);
+          const ids = (seen[key] ??= new Set());
+          for (const item of raw) {
+            if (!item || ids.has(item.uri) || bucket.length >= target) continue;
+            ids.add(item.uri);
+            bucket.push(item);
+          }
+          if (raw.length === 0 || bucket.length >= target) cursor.delete(t);
+          else cursor.set(t, off + raw.length);
         }
-        remainingTypes = stillGoing;
       }
 
       const out: Record<string, unknown> = { query, offset: start };

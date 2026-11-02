@@ -54,7 +54,7 @@ export function registerPlaylistTools(server: McpServer, spotify: SpotifyClient)
     "get_user_playlists",
     {
       description:
-        "List the current user's playlists (owned and followed). `isOwner` marks playlists the user can edit. `totalTracks` is null for playlists owned by someone else, because Spotify no longer exposes their contents to dev-mode apps.",
+        "List the current user's playlists (owned and followed). `isOwner` marks playlists the user can edit; only those (and collaborative ones) can be modified.",
       inputSchema: {
         limit: z.number().int().min(1).max(50).optional().describe("Page size (1-50, default 20)."),
         offset: z.number().int().min(0).optional().describe("Index of the first playlist to return."),

@@ -36,7 +36,7 @@ Notes:
 
 - **Playback tools** need **Spotify Premium** and an **active device** (Spotify open somewhere).
 - Spotify dev-mode apps can only read or edit playlists the user **owns or collaborates on**. Other
-  playlists list with metadata only (`totalTracks: null`).
+  playlists still list with metadata and track counts, but their contents may be unreadable.
 - `get_recommendations` was removed: Spotify killed `/v1/recommendations` for apps created after
   2024-11-27, so it could only ever fail.
 
