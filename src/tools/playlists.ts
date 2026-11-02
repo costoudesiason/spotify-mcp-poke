@@ -28,8 +28,20 @@ interface PlayableItem {
   uri: string;
   duration_ms: number;
   artists?: { name: string }[];
-  album?: { name: string };
+  album?: { name: string; release_date?: string };
   show?: { name: string };
+}
+
+function mapItem(it: PlayableItem | null | undefined) {
+  return {
+    name: it?.name ?? null,
+    uri: it?.uri ?? null,
+    type: it?.type ?? "track",
+    artists: it?.artists?.map((a) => a.name) ?? (it?.show ? [it.show.name] : []),
+    album: it?.album?.name,
+    released: it?.album?.release_date,
+    durationMs: it?.duration_ms,
+  };
 }
 
 interface PlaylistEntry {
@@ -120,21 +132,39 @@ export function registerPlaylistTools(server: McpServer, spotify: SpotifyClient)
         }
       }
 
-      const tracks = page.items.map((entry, i) => {
-        const it = entry.item ?? entry.track;
-        return {
-          position: off + i,
-          name: it?.name ?? null,
-          uri: it?.uri ?? null,
-          type: it?.type ?? "track",
-          artists: it?.artists?.map((a) => a.name) ?? (it?.show ? [it.show.name] : []),
-          album: it?.album?.name,
-          durationMs: it?.duration_ms,
-          addedAt: entry.added_at,
-          isLocal: entry.is_local ?? false,
-        };
-      });
+      const tracks = page.items.map((entry, i) => ({
+        position: off + i,
+        ...mapItem(entry.item ?? entry.track),
+        addedAt: entry.added_at,
+        isLocal: entry.is_local ?? false,
+      }));
       return ok({ playlistId: id, ...pageInfo(off, page.items.length, page.total), tracks });
+    }),
+  );
+
+  server.registerTool(
+    "get_liked_songs",
+    {
+      description:
+        "List the user's Liked Songs (saved tracks), newest first, with album and release date. Page with `offset` while `hasMore` is true.",
+      inputSchema: {
+        limit: z.number().int().min(1).max(50).optional().describe("Page size (1-50, default 50)."),
+        offset: z.number().int().min(0).optional().describe("Index of the first liked song to return."),
+      },
+      annotations: { readOnlyHint: true },
+    },
+    safe(async ({ limit, offset }) => {
+      const off = offset ?? 0;
+      const page = await spotify.get<Paging<{ added_at: string; track: PlayableItem | null }>>("/me/tracks", {
+        limit: limit ?? 50,
+        offset: off,
+      });
+      const tracks = page.items.map((entry, i) => ({
+        position: off + i,
+        ...mapItem(entry.track),
+        likedAt: entry.added_at,
+      }));
+      return ok({ ...pageInfo(off, page.items.length, page.total), tracks });
     }),
   );
 }

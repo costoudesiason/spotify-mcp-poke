@@ -12,7 +12,7 @@ Targets the Spotify API as it stands after the
 [February 2026 dev-mode changes](https://developer.spotify.com/documentation/web-api/references/changes/february-2026)
 (`/playlists/{id}/items`, `POST /me/playlists`, `DELETE /me/library`, search capped at 10 per request).
 
-## Tools (16)
+## Tools (17)
 
 | Tool | Description |
 | --- | --- |
@@ -25,6 +25,7 @@ Targets the Spotify API as it stands after the
 | `search_tracks` | Search tracks, artists, albums, playlists. Up to 50 per type (paged internally 10 at a time). |
 | `get_user_playlists` | List the user's playlists with `isOwner` and track counts. Paginated. |
 | `get_playlist_tracks` | Tracks in a playlist the user owns or collaborates on. Paginated. |
+| `get_liked_songs` | The user's Liked Songs with release dates. Paginated. |
 | `create_playlist` | Create a playlist (private by default). |
 | `add_tracks_to_playlist` | Add tracks by URI, optionally at a position. |
 | `remove_tracks_from_playlist` | Remove tracks by URI. |

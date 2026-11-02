@@ -5,7 +5,7 @@ import { registerSearchTools } from "./tools/search.js";
 import { registerPlaylistTools } from "./tools/playlists.js";
 import { registerPlaylistEditTools } from "./tools/playlist-edit.js";
 
-export const SERVER_VERSION = "2.0.1";
+export const SERVER_VERSION = "2.1.0";
 
 export function buildServer(spotify: SpotifyClient): McpServer {
   const server = new McpServer(
