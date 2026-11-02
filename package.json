@@ -1,6 +1,6 @@
 {
   "name": "spotify-mcp-poke",
-  "version": "2.2.0",
+  "version": "2.2.1",
   "description": "MCP server exposing the Spotify Web API: playback, search, and full playlist editing.",
   "type": "module",
   "main": "dist/index.js",

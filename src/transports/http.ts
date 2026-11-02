@@ -55,14 +55,21 @@ function registerReauth(app: express.Express, auth: ReturnType<typeof requireAut
     const state = randomBytes(16).toString("hex");
     pendingStates.set(state, Date.now());
     const url = new URL("https://accounts.spotify.com/authorize");
-    url.search = new URLSearchParams({
+    // ?scopes=a,b narrows the request to a subset of SCOPES; ?dialog=0 skips the forced consent screen.
+    const allowed = new Set(SCOPES.split(" "));
+    const requested =
+      typeof _req.query.scopes === "string"
+        ? _req.query.scopes.split(/[\s,]+/).filter((s) => allowed.has(s))
+        : [...allowed];
+    const params: Record<string, string> = {
       client_id: opts.tokens.clientIdValue,
       response_type: "code",
       redirect_uri: opts.redirectUri,
-      scope: SCOPES,
+      scope: requested.join(" "),
       state,
-      show_dialog: "true",
-    }).toString();
+    };
+    if (_req.query.dialog !== "0") params.show_dialog = "true";
+    url.search = new URLSearchParams(params).toString();
     res.redirect(url.toString());
   });
 
