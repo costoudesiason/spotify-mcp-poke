@@ -5,6 +5,7 @@
 import { randomBytes } from "node:crypto";
 import { readFileSync, existsSync } from "node:fs";
 import express from "express";
+import { SCOPES } from "../src/scopes.js";
 
 if (existsSync(".env")) {
   for (const line of readFileSync(".env", "utf8").split("\n")) {
@@ -21,17 +22,6 @@ if (!clientId || !clientSecret) {
   process.exit(1);
 }
 
-const SCOPES = [
-  "user-read-playback-state",
-  "user-modify-playback-state",
-  "user-read-currently-playing",
-  "playlist-read-private",
-  "playlist-read-collaborative",
-  "playlist-modify-public",
-  "playlist-modify-private",
-  "user-library-read",
-  "user-library-modify",
-].join(" ");
 
 const state = randomBytes(16).toString("hex");
 const redirect = new URL(redirectUri);

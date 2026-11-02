@@ -36,6 +36,28 @@ export class TokenManager {
     this.expiresAt = 0;
   }
 
+  /** Exchange an OAuth authorization code and switch to the resulting refresh token immediately. */
+  async exchangeCode(code: string, redirectUri: string): Promise<{ refreshToken: string; scope: string }> {
+    const basic = Buffer.from(`${this.clientId}:${this.clientSecret}`).toString("base64");
+    const res = await fetch(TOKEN_URL, {
+      method: "POST",
+      headers: { Authorization: `Basic ${basic}`, "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ grant_type: "authorization_code", code, redirect_uri: redirectUri }),
+    });
+    const data = (await res.json()) as TokenResponse & { scope?: string; error_description?: string };
+    if (!res.ok || !data.refresh_token) {
+      throw new Error(`Code exchange failed (${res.status}): ${data.error_description ?? JSON.stringify(data)}`);
+    }
+    this.refreshToken = data.refresh_token;
+    this.accessToken = data.access_token;
+    this.expiresAt = Date.now() + data.expires_in * 1000;
+    return { refreshToken: data.refresh_token, scope: data.scope ?? "" };
+  }
+
+  get clientIdValue(): string {
+    return this.clientId;
+  }
+
   private async refresh(): Promise<string> {
     const basic = Buffer.from(`${this.clientId}:${this.clientSecret}`).toString("base64");
     const res = await fetch(TOKEN_URL, {

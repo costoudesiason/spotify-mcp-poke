@@ -82,6 +82,15 @@ The server acts as **your** Spotify account, so HTTP mode refuses to start witho
 
 Treat the `/mcp/<token>` URL like a password. Rotate by changing `MCP_AUTH_TOKEN` on Railway.
 
+## Re-authorise from a phone (hosted)
+
+Need new scopes and no laptop? With the server deployed:
+
+1. Open `https://<host>/auth/login?key=<token>` and approve.
+2. Spotify redirects to `http://127.0.0.1:8888/callback?code=...`. The page won't load on a phone; copy that URL.
+3. `POST https://<host>/auth/exchange` (authenticated) with `{"url": "<copied URL>"}`. The server switches to the
+   new token immediately and returns it; save it as `SPOTIFY_REFRESH_TOKEN` so it survives restarts.
+
 ## Deploy to Railway
 
 `railway.json` configures Railpack, `npm run build`, `npm start`, and a `/health` healthcheck.

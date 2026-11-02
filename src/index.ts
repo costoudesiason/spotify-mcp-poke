@@ -7,11 +7,12 @@ import { startHttp } from "./transports/http.js";
 
 async function main() {
   const config = loadConfig();
-  const spotify = new SpotifyClient(new TokenManager(config.clientId, config.clientSecret, config.refreshToken));
+  const tokens = new TokenManager(config.clientId, config.clientSecret, config.refreshToken);
+  const spotify = new SpotifyClient(tokens);
   const makeServer = () => buildServer(spotify);
 
   if (config.transport === "http") {
-    await startHttp(makeServer, config.port, config.authToken!);
+    await startHttp(makeServer, config.port, config.authToken!, { tokens, redirectUri: config.redirectUri });
   } else {
     await startStdio(makeServer);
   }

@@ -6,6 +6,7 @@ const EnvSchema = z.object({
   SPOTIFY_REFRESH_TOKEN: z.string().min(1, "SPOTIFY_REFRESH_TOKEN is required (run `npm run auth`)"),
   MCP_TRANSPORT: z.enum(["stdio", "http"]).optional(),
   MCP_AUTH_TOKEN: z.string().optional(),
+  SPOTIFY_REDIRECT_URI: z.string().optional(),
   PORT: z.coerce.number().int().positive().optional(),
 });
 
@@ -16,6 +17,7 @@ export interface Config {
   transport: "stdio" | "http";
   port: number;
   authToken?: string;
+  redirectUri: string;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
@@ -45,5 +47,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     transport,
     port: e.PORT ?? 8080,
     authToken,
+    redirectUri: e.SPOTIFY_REDIRECT_URI || "http://127.0.0.1:8888/callback",
   };
 }
