@@ -1,195 +1,137 @@
 # spotify-mcp-poke
 
-  A [Model Context Protocol](https://modelcontextprotocol.io) server that exposes the
-  [Spotify Web API](https://developer.spotify.com/documentation/web-api) as tools an LLM can call —
-  playback control, catalog search, full playlist access **and editing**, and track recommendations.
+A [Model Context Protocol](https://modelcontextprotocol.io) server that exposes the
+[Spotify Web API](https://developer.spotify.com/documentation/web-api) as tools an LLM can call:
+playback control, catalog search, and full playlist reading **and editing**.
 
-  Built with **Node.js + TypeScript** and the official `@modelcontextprotocol/sdk`. Runs locally over
-  **stdio** (for clients like Claude Desktop) or over **Streamable HTTP** for hosted deployments
-  (e.g. Railway, where it exposes `POST /mcp` and a `GET /health` check).
+Built with **Node.js + TypeScript** and the official `@modelcontextprotocol/sdk`. Runs locally over
+**stdio** (Claude Desktop, etc.) or over **Streamable HTTP** for hosted deployments (Railway), where it
+exposes an authenticated `POST /mcp` and an open `GET /health`.
 
-  ## Tools (13)
+Targets the Spotify API as it stands after the
+[February 2026 dev-mode changes](https://developer.spotify.com/documentation/web-api/references/changes/february-2026)
+(`/playlists/{id}/items`, `POST /me/playlists`, `DELETE /me/library`, search capped at 10 per request).
 
-  | Tool | Description |
-  | --- | --- |
-  | `get_playback_state` | Check what is currently playing (track, artist, device, progress). |
-  | `play_track` | Start playback of a track by its Spotify URI (`spotify:track:...`). |
-  | `pause_playback` | Pause playback on the active device. |
-  | `skip_next` | Skip to the next track in the queue. |
-  | `search_tracks` | Search the catalog for tracks, artists, albums, or playlists. |
-  | `get_user_playlists` | List the current user's playlists (paginated). |
-  | `get_playlist_tracks` | Retrieve the tracks inside a playlist by ID (paginated). |
-  | `get_recommendations` | Suggest songs from seed tracks, artists, and/or genres. |
-  | `create_playlist` | Create a new playlist for the current user. |
-  | `add_tracks_to_playlist` | Add tracks (by URI) to a playlist. |
-  | `remove_tracks_from_playlist` | Remove tracks (by URI) from a playlist. |
-  | `reorder_or_replace_playlist_tracks` | Reorder a range of tracks, or replace the whole track list. |
-  | `update_playlist_details` | Rename a playlist or change its description / public flag. |
+## Tools (16)
 
-  > **Playback tools** (`play_track`, `pause_playback`, `skip_next`) require **Spotify Premium** and an
-  > **active device** (have the Spotify app open somewhere). Without an active device the API returns
-  > `404 No active device`.
+| Tool | Description |
+| --- | --- |
+| `get_playback_state` | What's playing: track, artists, device, progress, shuffle/repeat. |
+| `play_track` | Play a track by URI (`spotify:track:...`). |
+| `resume_playback` | Resume where playback was paused. |
+| `pause_playback` | Pause the active device. |
+| `skip_next` / `skip_previous` | Next or previous track. |
+| `add_to_queue` | Queue a track. |
+| `search_tracks` | Search tracks, artists, albums, playlists. Up to 50 per type (paged internally 10 at a time). |
+| `get_user_playlists` | List the user's playlists with `isOwner` and track counts. Paginated. |
+| `get_playlist_tracks` | Tracks in a playlist the user owns or collaborates on. Paginated. |
+| `create_playlist` | Create a playlist (private by default). |
+| `add_tracks_to_playlist` | Add tracks by URI, optionally at a position. |
+| `remove_tracks_from_playlist` | Remove tracks by URI. |
+| `reorder_or_replace_playlist_tracks` | Move a range of tracks, or replace the whole list. |
+| `update_playlist_details` | Rename, change description, or toggle public. |
+| `delete_playlist` | Delete an owned playlist (or unfollow someone else's). |
 
-  > **`get_recommendations`** uses an endpoint Spotify
-  > [deprecated on 2024-11-27](https://developer.spotify.com/blog/2024-11-27-changes-to-the-web-api)
-  > for apps created after that date — newer apps receive a `404`. The tool is implemented to spec and
-  > returns a clear explanation when unavailable. Everything else is unaffected.
+Notes:
 
-  > **Playlist editing** needs the `playlist-modify-public` and `playlist-modify-private` scopes (requested
-  > by `npm run auth`). The tools transparently handle **both** the classic (`/playlists/{id}/tracks`) and
-  > newer (`/playlists/{id}/items`) Spotify playlist API shapes.
+- **Playback tools** need **Spotify Premium** and an **active device** (Spotify open somewhere).
+- Spotify dev-mode apps can only read or edit playlists the user **owns or collaborates on**. Other
+  playlists list with metadata only (`totalTracks: null`).
+- `get_recommendations` was removed: Spotify killed `/v1/recommendations` for apps created after
+  2024-11-27, so it could only ever fail.
 
-  ## Prerequisites
+## Prerequisites
 
-  - Node.js 20+
-  - A Spotify account (Premium for playback control)
-  - A Spotify app — create one at the [Developer Dashboard](https://developer.spotify.com/dashboard)
+- Node.js 20+
+- A Spotify account. The app owner needs **Premium** for dev-mode apps to work at all.
+- A Spotify app from the [Developer Dashboard](https://developer.spotify.com/dashboard)
 
-  ## 1. Create a Spotify app
+## 1. Create a Spotify app
 
-  1. [Developer Dashboard](https://developer.spotify.com/dashboard) → **Create app**.
-  2. Note the **Client ID** and **Client Secret**.
-  3. Under **Redirect URIs**, add exactly: `http://127.0.0.1:8888/callback`
-     (must match `SPOTIFY_REDIRECT_URI` below — Spotify requires a loopback IP, not `localhost`).
+1. Developer Dashboard → **Create app**. Note the **Client ID** and **Client Secret**.
+2. Under **Redirect URIs**, add exactly `http://127.0.0.1:8888/callback` (Spotify requires a loopback IP, not `localhost`).
 
-  ## 2. Install & configure
-
-  ```bash
-  npm install
-  cp .env.example .env
-  ```
-
-  Fill in `.env`:
-
-  ```env
-  SPOTIFY_CLIENT_ID=...
-  SPOTIFY_CLIENT_SECRET=...
-  SPOTIFY_REDIRECT_URI=http://127.0.0.1:8888/callback
-  # SPOTIFY_REFRESH_TOKEN is filled in by the next step
-  ```
-
-  ## 3. Get a refresh token
-
-  A small Express-based helper runs the OAuth flow locally and prints a refresh token:
-
-  ```bash
-  npm run auth
-  ```
-
-  1. It prints an authorization URL — open it in your browser.
-  2. Approve the requested scopes.
-  3. Spotify redirects back to the local helper, which exchanges the code and prints your **refresh token**.
-  4. Paste it into `.env` as `SPOTIFY_REFRESH_TOKEN`.
-
-  The refresh token is long-lived; the server uses it to mint short-lived access tokens automatically.
-  The deployed server never runs the browser flow — it just refreshes silently with this token.
-
-  ## 4. Run locally (stdio)
-
-  ```bash
-  npm run build
-  npm start
-  # or, without building:
-  npm run dev
-  ```
-
-  ### Connect from Claude Desktop
-
-  Add to your `claude_desktop_config.json`:
-
-  ```json
-  {
-    "mcpServers": {
-      "spotify": {
-        "command": "node",
-        "args": ["/absolute/path/to/spotify-mcp/dist/index.js"],
-        "env": {
-          "SPOTIFY_CLIENT_ID": "...",
-          "SPOTIFY_CLIENT_SECRET": "...",
-          "SPOTIFY_REFRESH_TOKEN": "...",
-          "SPOTIFY_REDIRECT_URI": "http://127.0.0.1:8888/callback"
-        }
-      }
-    }
-  }
-  ```
-
-  ## 5. Run over HTTP
-
-  Set `MCP_TRANSPORT=http` (or just provide `PORT`) and the server starts a Streamable HTTP endpoint at
-  `POST /mcp`, with a health check at `GET /health`:
-
-  ```bash
+## 2. Install, configure, get a refresh token
 
 ```bash
-MCP_TRANSPORT=http PORT=8080 npm start
+npm install
+cp .env.example .env      # fill SPOTIFY_CLIENT_ID / SPOTIFY_CLIENT_SECRET
+npm run auth              # open the printed URL, approve, copy SPOTIFY_REFRESH_TOKEN into .env
 ```
+
+The refresh token is long-lived; the server mints short-lived access tokens from it automatically.
+
+## 3. Run
+
+```bash
+npm run build && npm start               # stdio
+MCP_TRANSPORT=http PORT=8080 MCP_AUTH_TOKEN=$(openssl rand -hex 32) npm start   # HTTP
+```
+
+## Authentication (HTTP mode)
+
+The server acts as **your** Spotify account, so HTTP mode refuses to start without `MCP_AUTH_TOKEN`
+(24+ characters). Every `/mcp` request must present it in one of three ways:
+
+| Method | Use it for |
+| --- | --- |
+| `Authorization: Bearer <token>` | Clients with an API key / header field (Poke) |
+| `https://<host>/mcp/<token>` | Clients that only take a URL (claude.ai custom connectors) |
+| `https://<host>/mcp?key=<token>` | Fallback |
+
+Treat the `/mcp/<token>` URL like a password. Rotate by changing `MCP_AUTH_TOKEN` on Railway.
 
 ## Deploy to Railway
 
-This repo includes a `Dockerfile` and `railway.json`.
+`railway.json` configures Railpack, `npm run build`, `npm start`, and a `/health` healthcheck.
 
-1. Create a new Railway project from this repo (it auto-detects the Dockerfile).
-2. Add the environment variables in the Railway dashboard:
-   - `SPOTIFY_CLIENT_ID`
-   - `SPOTIFY_CLIENT_SECRET`
-   - `SPOTIFY_REFRESH_TOKEN`
-   - `SPOTIFY_REDIRECT_URI`
-   - `MCP_TRANSPORT=http` (the Dockerfile sets this by default)
-3. Railway injects `PORT` automatically; the server binds to it.
-4. Deploy. Your MCP endpoint will be `https://<your-app>.up.railway.app/mcp`.
+Variables: `SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET`, `SPOTIFY_REFRESH_TOKEN`, `MCP_TRANSPORT=http`,
+`MCP_AUTH_TOKEN`. Railway injects `PORT`.
 
-> Generate the refresh token **locally** with `npm run auth` first, then paste it into Railway — the
-> OAuth redirect flow only needs to run once, on your machine.
+## Connect a client
 
-### Using it from an MCP client
+- **claude.ai**: Settings → Connectors → Add custom connector → URL `https://<host>/mcp/<token>`.
+- **Poke / header-capable clients**: URL `https://<host>/mcp`, API key `<token>`.
+- **Claude Desktop (local)**:
 
-Point your client (Claude Desktop, Poke, etc.) at the Streamable HTTP endpoint — **including the
-`/mcp` path** — and leave any API-key field empty (auth is handled server-side via env vars):
-
-```
-https://<your-app>.up.railway.app/mcp
+```json
+{
+  "mcpServers": {
+    "spotify": {
+      "command": "node",
+      "args": ["/absolute/path/to/spotify-mcp-poke/dist/index.js"],
+      "env": {
+        "SPOTIFY_CLIENT_ID": "...",
+        "SPOTIFY_CLIENT_SECRET": "...",
+        "SPOTIFY_REFRESH_TOKEN": "..."
+      }
+    }
+  }
+}
 ```
 
 ## Project structure
 
 ```
 src/
-  index.ts              # entry point: config → client → transport
-  config.ts             # env validation (zod) + transport selection
-  token-manager.ts      # refresh-token → access-token, cached & de-duped
-  spotify-client.ts     # thin typed Spotify Web API wrapper
-  server.ts             # builds the MCP server and registers tools
+  index.ts              # entry: config → client → transport
+  config.ts             # env validation (zod); HTTP fails closed without MCP_AUTH_TOKEN
+  token-manager.ts      # refresh token → cached, de-duped access tokens
+  spotify-client.ts     # typed fetch wrapper; retries once on 401 and 429
+  server.ts             # builds the McpServer and registers tools
   transports/
-    stdio.ts            # stdio transport (local clients)
-    http.ts             # Streamable HTTP transport (hosted)
+    stdio.ts
+    http.ts             # stateless Streamable HTTP + auth
   tools/
-    helpers.ts          # shared result/error formatting
-    playback.ts         # get_playback_state, play_track, pause_playback, skip_next
-    search.ts           # search_tracks
-    playlists.ts        # get_user_playlists, get_playlist_tracks
-    playlist-edit.ts    # create_playlist, add/remove/reorder/replace, update_playlist_details
-    recommendations.ts  # get_recommendations
+    helpers.ts          # results, errors with actionable hints, ID parsing, paging
+    playback.ts
+    search.ts
+    playlists.ts        # read
+    playlist-edit.ts    # write
 scripts/
-  get-refresh-token.ts  # local OAuth helper (Express)
+  get-refresh-token.ts  # local OAuth helper
 ```
-
-## Environment variables
-
-| Variable | Required | Description |
-| --- | --- | --- |
-| `SPOTIFY_CLIENT_ID` | yes | Spotify app client ID. |
-| `SPOTIFY_CLIENT_SECRET` | yes | Spotify app client secret. |
-| `SPOTIFY_REDIRECT_URI` | yes (auth helper) | Must match the dashboard redirect URI. |
-| `SPOTIFY_REFRESH_TOKEN` | yes (server) | Long-lived token from `npm run auth`. |
-| `MCP_TRANSPORT` | no | `stdio` (default) or `http`. |
-| `PORT` | no | HTTP port (Railway sets this automatically). |
 
 ## License
 
 MIT
-
-A couple of notes:
-- It's secret-free — safe for a public repo. No client ID/secret/token anywhere.
-- I kept the deploy URL generic (https://<your-app>.up.railway.app/mcp) rather than hardcoding your live instance, which is the right call for a public README.
-- It's already written to README.md in the project too, so it'll match whenever you push the code.
